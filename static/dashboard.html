@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>honey-prompt dashboard</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 0;
+         background: #0b1220; color: #e6edf3; }
+  header { background: #161b22; padding: 16px 24px; border-bottom: 1px solid #30363d; }
+  h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+           gap: 12px; margin-bottom: 24px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+          padding: 16px; }
+  .card h3 { margin: 0; font-size: 12px; text-transform: uppercase;
+             color: #7d8590; font-weight: 600; letter-spacing: 0.05em; }
+  .card .v { font-size: 28px; font-weight: 700; margin-top: 6px;
+             color: #58a6ff; }
+  table { width: 100%; border-collapse: collapse; background: #161b22;
+          border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #30363d;
+           font-size: 13px; }
+  th { background: #0d1117; color: #7d8590; font-weight: 600;
+       text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+  tr:last-child td { border-bottom: 0; }
+  tr.attack td { background: rgba(248, 81, 73, 0.06); }
+  .tag { display: inline-block; background: #21262d; color: #58a6ff;
+         padding: 2px 8px; border-radius: 999px; font-size: 11px;
+         margin-right: 4px; font-family: ui-monospace, monospace; }
+  .tag.high { color: #f85149; }
+  .filters { margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  select, input { background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+                  padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>honey-prompt dashboard</h1>
+</header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div class="filters">
+    <select id="type">
+      <option value="">all types</option>
+      <option value="attack">attacks only</option>
+      <option value="request">requests only</option>
+    </select>
+    <select id="since">
+      <option value="1h">last hour</option>
+      <option value="24h" selected>last 24h</option>
+      <option value="7d">last 7 days</option>
+      <option value="all">all time</option>
+    </select>
+    <input id="tag" placeholder="filter by tag (optional)" />
+  </div>
+  <table>
+    <thead><tr>
+      <th>time (UTC)</th><th>type</th><th>ip</th><th>tags</th><th>input</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+<script>
+async function load() {
+  const type = document.getElementById("type").value;
+  const since = document.getElementById("since").value;
+  const tag = document.getElementById("tag").value.trim();
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (since && since !== "all") params.set("since", since);
+  if (tag) params.set("tag", tag);
+  params.set("limit", 200);
+
+  const [stats, ev] = await Promise.all([
+    fetch("/api/stats").then(r => r.json()),
+    fetch("/api/events?" + params.toString()).then(r => r.json()),
+  ]);
+
+  const sc = document.getElementById("stats");
+  sc.innerHTML = `
+    <div class="card"><h3>total events</h3><div class="v">${stats.total_events}</div></div>
+    <div class="card"><h3>attacks</h3><div class="v" style="color:#f85149">${stats.total_attacks}</div></div>
+    <div class="card"><h3>last 24h</h3><div class="v">${stats.last_24h}</div></div>
+  `;
+  if (stats.top_tags && stats.top_tags.length) {
+    const tagCard = document.createElement("div");
+    tagCard.className = "card";
+    tagCard.innerHTML = `<h3>top tags</h3><div style="margin-top:8px">${
+      stats.top_tags.map(t => `<span class="tag">${t.tag} (${t.count})</span>`).join("")
+    }</div>`;
+    sc.appendChild(tagCard);
+  }
+
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+  for (const e of ev.events) {
+    const tr = document.createElement("tr");
+    if (e.type === "attack") tr.className = "attack";
+    const tags = (e.tags || []).map(t => {
+      const cls = t.includes("high") ? "tag high" : "tag";
+      return `<span class="${cls}">${t}</span>`;
+    }).join("");
+    const input = (e.payload && e.payload.input) || "";
+    const truncated = input.length > 120 ? input.slice(0, 120) + "…" : input;
+    tr.innerHTML = `
+      <td>${e.ts}</td>
+      <td>${e.type}</td>
+      <td>${e.actor_ip || "-"}</td>
+      <td>${tags}</td>
+      <td><code>${escape(truncated)}</code></td>
+    `;
+    rows.appendChild(tr);
+  }
+}
+
+function escape(s) {
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+["type","since","tag"].forEach(id => {
+  document.getElementById(id).addEventListener("change", load);
+  document.getElementById(id).addEventListener("input", () => {
+    if (id === "tag") {
+      clearTimeout(window._tt);
+      window._tt = setTimeout(load, 300);
+    }
+  });
+});
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

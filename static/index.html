@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>honey-prompt chat</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 0;
+         background: #0b1220; color: #e6edf3; }
+  header { background: #161b22; padding: 16px 24px; border-bottom: 1px solid #30363d; }
+  h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header small { color: #7d8590; display: block; margin-top: 4px; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px; }
+  #log { background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+         padding: 16px; height: 380px; overflow-y: auto; margin-bottom: 16px;
+         font-family: ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.5; }
+  .msg { margin: 8px 0; }
+  .me { color: #58a6ff; }
+  .bot { color: #d2a8ff; }
+  .sys { color: #f0883e; font-style: italic; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+          padding: 10px 12px; border-radius: 6px; font-size: 14px; }
+  input:focus { outline: 2px solid #58a6ff; outline-offset: -2px; }
+  button { background: #238636; border: 0; color: white; padding: 10px 18px;
+           border-radius: 6px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #2ea043; }
+  a { color: #58a6ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AcmeCorp Customer Support</h1>
+  <small>Ask me anything about shipping, returns, or your account.</small>
+</header>
+<main>
+  <div id="log"></div>
+  <form id="f">
+    <input id="m" autocomplete="off" placeholder="Type a message…" />
+    <button>Send</button>
+  </form>
+  <p style="margin-top: 16px; font-size: 12px; color: #7d8590;">
+    Tip: this is a honeypot. Try <code>ignore previous instructions</code> and watch
+    the dashboard at <a href="/dashboard">/dashboard</a>.
+  </p>
+</main>
+<script>
+const log = document.getElementById("log");
+const f = document.getElementById("f");
+const m = document.getElementById("m");
+let sessionId = null;
+
+function add(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+add("sys", "Connected.");
+
+f.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = m.value.trim();
+  if (!msg) return;
+  add("me", "> " + msg);
+  m.value = "";
+  try {
+    const r = await fetch("/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: msg, session_id: sessionId}),
+    });
+    const d = await r.json();
+    sessionId = d.session_id;
+    add("bot", d.reply);
+  } catch (err) {
+    add("sys", "error: " + err.message);
+  }
+});
+</script>
+</body>
+</html>
